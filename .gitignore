@@ -1,0 +1,9 @@
+__pycache__/
+.DS_Store
+.venv/
+venv/
+env/
+coopenv/
+Fritz/coopenv11/
+docker-compose.yaml
+coopenv/

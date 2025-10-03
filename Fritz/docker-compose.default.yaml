@@ -1,0 +1,11 @@
+services:
+  oraclefritzbot:
+    build: .
+    image: oraclefritzbot:latest
+    container_name: oracle-fritz-bot
+    environment:
+      - GCN_CLIENT_ID=<your client id>
+      - GCN_CLIENT_SECRET=<your client
+      - GCN_GROUP_ID=oraclefritzbot
+      - SKYPORTAL_HOST="https:/fritz.science"
+      - SKYPORTAL_TOKEN=<your token>
