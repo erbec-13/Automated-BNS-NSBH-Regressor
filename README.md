@@ -5,13 +5,13 @@ All the relevant files can be found in the Fritz folder:
   
 &nbsp;&nbsp;&nbsp;&nbsp;**listener2.py** - The Listener 2 script that currently runs one time and interacts with events.json to retrieve events as outlined below and then cross references them with sources from Fritz
   
-&nbsp;&nbsp;&nbsp;&nbsp;**utils.py** - The script where all the functions authored by Natalya Pletskova exist
+&nbsp;&nbsp;&nbsp;&nbsp;**utils.py** - The script where all the functions authored by Natalya Pletskova and Ethan Erb exist
   
-&nbsp;&nbsp;&nbsp;&nbsp;**LSTM_model_production.h5** - The machine learning prediction model created by Natalya Pletskova
+&nbsp;&nbsp;&nbsp;&nbsp;**LSTM_model_production_O4_full.h5** - The machine learning prediction model created by Natalya Pletskova
 
-&nbsp;&nbsp;&nbsp;&nbsp;**feature_scaler_O4.joblib** - The feature scaler file currently in use with the model
+&nbsp;&nbsp;&nbsp;&nbsp;**feature_scaler_O4.pkl** - The feature scaler file currently in use with the model
 
-&nbsp;&nbsp;&nbsp;&nbsp;**target_scaler_O4.joblib** - The target scaler file currently in use with the model
+&nbsp;&nbsp;&nbsp;&nbsp;**target_scaler_O4.pkl** - The target scaler file currently in use with the model
  
 &nbsp;&nbsp;&nbsp;&nbsp;**requirements.txt** - A list of all the required libraries to have installed before running the code
 
@@ -57,12 +57,13 @@ An alternate process similar to the process mentioned above will be used to quer
   &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"uncertainty_reshaped": Python list of Python lists\
   &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"time": string\
   &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"alert_type": string\
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"skymap_url": string\
   &nbsp;&nbsp;&nbsp;&nbsp;},\
   &nbsp;&nbsp;&nbsp;&nbsp;...\
   }
 
   # Source ID database
-  The source_ids.txt file saves the source ids with this file format:\
+  The source_ids.txt file saves the source ids with this file format (most recent source first):\
   source1id\
   source2id\
   source3id\
