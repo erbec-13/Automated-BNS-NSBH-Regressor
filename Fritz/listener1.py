@@ -24,6 +24,7 @@ from joblib import load
 from Model import build_lstm_model
 import json
 from tensorflow.keras.models import load_model
+import pickle
 import socket
 import warnings
 
@@ -71,10 +72,10 @@ consumer.subscribe(
 
 #client = GraceDb()
 #
-#superevent_id = "S250818k"
+#superevent_id = "S251031dw"
 #
 ## Choose the VOEvent file you want
-#filename = "S250818k-4-Update.xml"
+#filename = "S251031dw-3-Initial.xml"
 #
 ## Download the file content
 #response = client.files(superevent_id, filename)
@@ -96,17 +97,19 @@ base_dir = os.path.dirname(os.path.abspath(__file__))
 
 # Load the prediction model and the scalers
 print("Loading model and scalers...")
-target_scaler = load(f"{base_dir}/target_scaler_O4.joblib")
-feature_scaler = load(f"{base_dir}/feature_scaler_O4.joblib")
-print("Building LSTM model once...")
-num_time_points = 30
-input_shape = (num_time_points, feature_scaler.transform(np.zeros((1, 6))).shape[1])
-model = load_model(
-    f"{base_dir}/LSTM_model_production.h5",
-    compile=False  # Ignore optimizer, loss, and metrics
-)
+with open('feature_scaler_O4.pkl', 'rb') as f:
+    feature_scaler = pickle.load(f)
+with open('target_scaler_O4.pkl', 'rb') as f:
+    target_scaler = pickle.load(f)
 # Display the feature names used in the model
 print(feature_scaler.feature_names_in_)
+print("Building LSTM model once...")
+num_time_points = 30
+input_shape = (num_time_points, feature_scaler.transform(np.zeros((1, 7))).shape[1])
+model = load_model(
+    f"{base_dir}/LSTM_model_production_O4_full.h5",
+    compile=False  # Ignore optimizer, loss, and metrics
+)
 
 # Iterate indefinitely over new GCN notices
 while True:
@@ -119,7 +122,7 @@ while True:
             if (graceid := next((p['@value'] for p in parsed['voe:VOEvent']['What']['Param'] if p.get('@name') == 'GraceID'), None)) and graceid.startswith("M"):
                 continue
             params = get_params(parsed)
-            superevent_id, event_page, alert_type, group, prob_bbh, prob_bns, prob_nsbh, far_format, distmean, area_90, longitude, latitude, has_ns, has_remnant, has_mass_gap, significant, prob_ter, skymap, PAstro, time = params
+            superevent_id, event_page, alert_type, group, prob_bbh, prob_bns, prob_nsbh, far_format, distmean, area_90, longitude, latitude, has_ns, has_remnant, has_mass_gap, significant, prob_ter, skymap, PAstro, time, diststd, chirp_mass, skymap_url = params
 
             # Display the event id and alert type
             print(superevent_id + " " + alert_type)
@@ -128,7 +131,7 @@ while True:
             if alert_type != "RETRACTION" and distmean != "error":
                 print(f"Processing {superevent_id} ({alert_type})")
                 
-                X = np.vstack((area_90, distmean, has_ns, has_remnant, has_mass_gap, PAstro)).T
+                X = np.vstack((area_90, has_ns, has_remnant, has_mass_gap, PAstro, distmean, diststd)).T
 
                 print(X)
 
@@ -141,6 +144,8 @@ while True:
 
                 # Standardize the target data
                 X_new = feature_scaler.transform(X)
+                chirp_mass = [chirp_mass]
+                X_new = np.concatenate([X_new, chirp_mass], axis=1)
 
                 # Reshape X data for LSTM input based on the model's input shape
                 X_new_reshaped = X_new.reshape((X_new.shape[0], 1, X_new.shape[1]))
@@ -158,7 +163,7 @@ while True:
                 uncertainty_reshaped = uncertainty_new.reshape(uncertainty_new.shape[0], num_time_points, 3)
 
                 # Store the event data needed to plot the prediction
-                event_data = {"time_single": time_single.tolist(), "mean_preds_inverted": mean_preds_inverted.tolist(), "uncertainty_reshaped": uncertainty_reshaped.tolist(), "time": time, "alert_type": alert_type}
+                event_data = {"time_single": time_single.tolist(), "mean_preds_inverted": mean_preds_inverted.tolist(), "uncertainty_reshaped": uncertainty_reshaped.tolist(), "time": time, "alert_type": alert_type, "skymap_url": skymap_url}
                 
                 # Identify the events.json file to store the event data to
                 file_path = "events.json"
@@ -176,6 +181,8 @@ while True:
                 # Save the updated events dictionary back to events.json (creating the file if it doesn't exist)
                 with open(file_path, "w") as f:
                     json.dump(events, f, indent=2)
+                
+                plot_all_light_curves_with_uncertainty(time_single, mean_preds_inverted, uncertainty_reshaped, superevent_id, time)
 
     # Handle exceptions gracefully and continue listening for new events
     except Exception as e:

@@ -7,10 +7,12 @@ import base64
 import astropy_healpix as ah
 import healpy as hp
 import xmltodict
+from ligo.gracedb.rest import GraceDb
 from ligo.skymap.io import read_sky_map
 from ligo.skymap.postprocess import find_greedy_credible_levels
 import matplotlib.pyplot as plt
 from astropy.time import Time
+import json
 import os
 
 SKYPORTAL_HOST = os.getenv("SKYPORTAL_HOST", "https://fritz.science")
@@ -72,7 +74,6 @@ def get_params(event_dict):
     skymap_url = next(item['Param']['@value'] for item in event_dict['voe:VOEvent']['What']['Group'] if item.get('@name') == 'GW_SKYMAP')
     print(skymap_url)
     skymap_response = requests.get(skymap_url)
-    check = input("Do you want to proceed with this skymap? (y/n): ")
     skymap_bytes = skymap_response.content
     skymap = Table.read(BytesIO(skymap_bytes))
     if skymap is None:
@@ -113,8 +114,30 @@ def get_params(event_dict):
     dateobs = Time(t0, precision=0).datetime
     time = dateobs.strftime('%Y-%m-%dT%H:%M:%S')
     
-    return superevent_id, event_page, alert_type, group, prob_bbh, prob_bns, prob_nsbh, far_format, distmean, area_90, longitude, latitude, has_ns, has_remnant, has_mass_gap, significant, prob_ter, skymap, PAstro, time
+    chirp_mass = get_bin_edges_for_event(superevent_id)
+    diststd = skymap.meta.get('DISTSTD', 'error')
+    
+    return superevent_id, event_page, alert_type, group, prob_bbh, prob_bns, prob_nsbh, far_format, distmean, area_90, longitude, latitude, has_ns, has_remnant, has_mass_gap, significant, prob_ter, skymap, PAstro, time, diststd, chirp_mass, skymap_url
 
+# Extract ChirpMass if present
+def get_bin_edges_for_event(superevent_id, filename="mchirp_source_PE.json", service_url='https://gracedb.ligo.org/api/'):
+    client = GraceDb(service_url=service_url)
+    # Download file
+    try:
+        r = client.files(superevent_id, filename)
+    except:
+        r = client.files(superevent_id, "mchirp_source.json")
+    #for key in r.json():
+        #print(key, r.json()[key])
+    if r.status_code != 200:
+        raise FileNotFoundError(f"{filename} not found for superevent {superevent_id} (HTTP {r.status_code})")
+    raw = r.read()
+    data = json.loads(raw)
+    # Extract bin_edges
+    if "bin_edges" in data:
+        return data["bin_edges"]
+    else:
+        raise KeyError(f"'bin_edges' not found in {filename} for {superevent_id}")
 
 def predict_with_uncertainty(model, X, n_iter=1000):
     predictions = []

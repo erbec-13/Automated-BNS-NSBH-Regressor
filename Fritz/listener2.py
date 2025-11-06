@@ -1,5 +1,5 @@
 # Author: Ethan Erb (referencing and adapting code from Natalya Pletskova)
-# Listener 1
+# Listener 2
 # Purpose: This script will query the SkyPortal API for new sources in the EM+GW group and check if they
 # match any recent GW events in space (within the 90% skymap region) and time (within -3 to +7 days of the event).
 # If a source matches with an event, the script will plot the source's photometry onto the event's predicted
@@ -15,6 +15,7 @@ import json
 from datetime import datetime, timedelta, UTC, timezone
 import os
 from ligo.gracedb.rest import GraceDb
+from ligo.skymap.io import read_sky_map
 import healpy as hp
 import numpy as np
 from astropy.coordinates import SkyCoord
@@ -24,6 +25,7 @@ from astropy.time import Time
 import matplotlib.pyplot as plt
 from io import BytesIO
 import base64
+from urllib.parse import urlparse
 
 # Set the SkyPortal token as an environment variable for security
 SKYPORTAL_TOKEN = os.getenv("SKYPORTAL_TOKEN")
@@ -134,43 +136,80 @@ def plot_source_on_event(source_id, event_id):
 # This function retrieves the bayestar skymap for a GraceDB event and saves it in a directory named skymaps
 # Created with the assistance of ChatGPT
 def get_skymap_path(graceid, download_dir="skymaps"):
+    """
+    Download a skymap from a given URL and return the local file path.
+
+    Parameters
+    ----------
+    skymap_url : str
+        Full URL to the skymap file (e.g., from GraceDB or elsewhere).
+    graceid : str, optional
+        GraceDB event ID, used to name the local file (optional).
+    download_dir : str
+        Directory to save skymaps (default: 'skymaps').
+
+    Returns
+    -------
+    str
+        Local file path to the downloaded skymap.
+    """
+    # Identify the events.json file to retrieve the skymap_url from
+    file_path = "events.json"
+
+    # Load existing events from events.json if it exists, otherwise create a new dictionary
+    if os.path.exists(file_path):
+        with open(file_path, "r") as f:
+            events = json.load(f)
+    else:
+        events = {}
+                
+    # Add or update the event data for the current superevent_id
+    skymap_url = events.get(graceid).get("skymap_url")
+
     os.makedirs(download_dir, exist_ok=True)
-    client = GraceDb()
 
-    files = client.files(graceid)
+    # Extract the filename from the URL
+    filename = os.path.basename(urlparse(skymap_url).path)
+    if graceid:
+        local_filename = f"{graceid}_{filename}"
+    else:
+        local_filename = filename
 
-    url=f"https://gracedb.ligo.org/api/superevents/{graceid}/files/bayestar.fits.gz"
-    local_path = os.path.join(download_dir, f"{graceid}_bayestar.fits.gz")
+    local_path = os.path.join(download_dir, local_filename)
+
+    # Download if not already present
     if not os.path.exists(local_path):
-        print(f"Downloading skymap from {url}")
-        response = requests.get(url)
+        print(f"Downloading skymap from {skymap_url}")
+        response = requests.get(skymap_url)
         response.raise_for_status()
         with open(local_path, "wb") as f:
             f.write(response.content)
-    return local_path
 
-    raise FileNotFoundError(f"No skymap file found for event {graceid}")
+    return local_path
 
 # This function checks if a coordinate in the sky (ra, dec) is within the 90% confidence region of a
 # given skymap
 # Created with the assistance of ChatGPT
 def is_in_90_percent(ra, dec, skymap_path):
-    with fits.open(skymap_path) as hdul:
-        prob = hdul[1].data['PROB']
-        nside = hp.npix2nside(len(prob))
+    try:
+        prob, header = read_sky_map(skymap_path)
+    except Exception as e:
+        print(f"Warning: could not read {skymap_path} with ligo.skymap: {e}")
+        return False
 
-        # Find the probability threshold that encloses 90% of the total probability
-        sorted_prob = np.sort(prob)[::-1]
-        cumsum = np.cumsum(sorted_prob)
-        level_90 = sorted_prob[np.searchsorted(cumsum, 0.9)]
+    nside = hp.npix2nside(len(prob))
 
-        # Convert RA, Dec to HEALPix pixel
-        coord = SkyCoord(ra=ra*u.degree, dec=dec*u.degree, frame='icrs')
-        theta = 0.5 * np.pi - coord.dec.radian
-        phi = coord.ra.radian
-        ipix = hp.ang2pix(nside, theta, phi)
+    # Find 90% probability threshold
+    sorted_prob = np.sort(prob)[::-1]
+    cumsum = np.cumsum(sorted_prob)
+    level_90 = sorted_prob[np.searchsorted(cumsum, 0.9)]
 
-        return prob[ipix] >= level_90
+    coord = SkyCoord(ra=ra*u.deg, dec=dec*u.deg, frame='icrs')
+    theta = 0.5 * np.pi - coord.dec.radian
+    phi = coord.ra.radian
+    ipix = hp.ang2pix(nside, theta, phi)
+
+    return prob[ipix] >= level_90
 
 # Check if the source id is in the file where we store previously seen source ids
 def id_in_file(string_id, filepath):
@@ -206,7 +245,7 @@ def check_source_with_events(source):
 
         # Spatial crossmatch check
         skymap_path = get_skymap_path(event_id)
-        print(skymap_path)
+        print("\t", skymap_path)
         if skymap_path:
             spatial_ok = is_in_90_percent(source.get("ra"), source.get("dec"), skymap_path)
 
@@ -218,13 +257,128 @@ def check_source_with_events(source):
             return
 
     # If no match found:
-    print("No match")
+    print("\tNo match")
     return
 
 
 # Move the code into this function to run at a specified time
 def scheduled_run():
     print("Running task at", datetime.now())
+    # Create a file to store previously seen source ids
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    filepath = f"{base_dir}/source_ids.txt"
+
+    # Only create the file if it doesn't exist
+    if not os.path.exists(filepath):
+        with open(filepath, "w") as f:
+            pass  # Creates an empty file
+
+    # Establish the information needed to connect to the SkyPortal API
+    base_url = "https://fritz.science/api"
+    url = base_url + "/sources"
+    token = SKYPORTAL_TOKEN
+    headers = {"Authorization": f"token {token}"}
+    group_ids = [1544]  # If applicable
+    max_retries = 3
+
+    # Introduce the starting pagination parameters
+    params = {
+        'pageNumber': 1,
+        'numPerPage': 100,
+        'group_ids': group_ids,
+        'totalMatches': None,
+        'useCache': True, # Enable caching
+        'queryID': None # Server will return this in the first response
+    }
+
+    # Create a dict to store all sources by their id
+    all_sources = {}
+
+    # Keep track of whether we've found a source that has already been processed
+    first_source_found = False
+
+    now = datetime.now(UTC)
+
+    # Run the code to fetch sources with 3 attempts in case of a request error
+    retries_remaining = max_retries
+    while retries_remaining > 0:
+
+        # Query the SkyPortal API for sources
+        r = requests.get(
+            url,
+            params=params,
+            headers=headers,
+        )
+
+        if r.status_code == 429:
+            print("Request rate limit exceeded; waiting 1s before trying again...")
+            time.sleep(1)
+            continue
+
+        data = r.json()
+
+        # Create a list of sources from the current page of the query
+        source_list = data["data"].get("sources", [])
+
+        if not source_list:
+            # Fritz sometimes returns an empty list on the first call with a new queryID
+            if "queryID" in data["data"]:
+                print("1a")
+                params["queryID"] = data["data"]["queryID"]
+                params["useCache"] = True
+                print("Got queryID, retrying to fetch first page...")
+                continue  # Retry now that query is cached
+            else:
+                print("1b")
+                #print(json.dumps(data["data"], indent=2))
+                break  # Truly no more sources
+
+        if data["status"] == "success":
+            print("YAY")
+            retries_remaining = max_retries
+        else:
+            print(f"Error: {data["message"]}; waiting 5s before trying again...")  # log as appropriate
+            retries_remaining -= 1
+            time.sleep(5)
+            continue
+        
+        # For every source in the source list
+        for src in source_list:
+            # Retrieve the source id and its creation time
+            src_id = src.get("id")
+            src_time = src.get("created_at")
+            print(src_id)
+            # If the source is older than 10 days or has already been processed, stop looking at sources
+            if ((now - datetime.fromisoformat(src_time).replace(tzinfo=timezone.utc)) > timedelta(days=10)) or id_in_file(src_id, filepath):
+                print(id_in_file(src_id, filepath))
+                first_source_found = True # Indicate that we have found the newest source we don't care about
+                break
+            if src_id:
+                # Add the source to the all_sources dict
+                all_sources[src_id] = src
+
+        # Figure out how many total sources there are and how many we have fetched so far
+        total_matches = data["data"]["totalMatches"]
+        params["queryID"] = data["data"]["queryID"] # Pass the queryID to the next request
+
+        # Display how many sources have been fetched so far
+        print(f"Fetched {len(all_sources)} of {total_matches} sources.")
+
+        # If we have found a source that is either too old or has already been processed, stop querying sources
+        # Stop querying sources if we have fetched all available sources
+        if first_source_found or len(all_sources) >= total_matches:
+            break
+
+        # Move to the next page of sources
+        params['pageNumber'] += 1
+
+    # For every source in all_sources, check if it matches with any recent GW events
+    for src_id in all_sources:
+        print(f"Checking source {src_id}")
+        # Save the source id to the source_ids.txt file to avoid reprocessing it in the future
+        with open(filepath, "a") as f:
+            f.write(f"{src_id}\n")
+        check_source_with_events(all_sources[src_id])
 
 scheduler = BlockingScheduler()
 
@@ -237,105 +391,7 @@ pacific = pytz.timezone("US/Pacific")
 #trigger = CronTrigger(hour=11, minute=0, timezone=pacific)  # 11:00 AM PT every day
 #scheduler.add_job(scheduled_run, trigger)
 #scheduler.start()
-
-# Create a file to store previously seen source ids
-base_dir = os.path.dirname(os.path.abspath(__file__))
-filepath = f"{base_dir}/source_ids.txt"
-
-# Only create the file if it doesn't exist
-if not os.path.exists(filepath):
-    with open(filepath, "w") as f:
-        pass  # Creates an empty file
-
-# Establish the information needed to connect to the SkyPortal API
-base_url = "https://fritz.science/api"
-url = base_url + "/sources"
-token = SKYPORTAL_TOKEN
-headers = {"Authorization": f"token {token}"}
-group_ids = [1544]  # If applicable
-max_retries = 3
-
-# Introduce the starting pagination parameters
-params = {
-    'pageNumber': 1,
-    'numPerPage': 100,
-    'group_ids': group_ids,
-    'totalMatches': None,
-    'useCache': True, # Enable caching
-    'queryID': None # Server will return this in the first response
-}
-
-# Create a dict to store all sources by their id
-all_sources = {}
-
-# Keep track of whether we've found a source that has already been processed
-first_source_found = False
-
-now = datetime.now(UTC)
-
-# Run the code to fetch sources with 3 attempts in case of a request error
-retries_remaining = max_retries
-while retries_remaining > 0:
-    # Query the SkyPortal API for sources
-    r = requests.get(
-        url,
-        params=params,
-        headers=headers,
-    )
-
-    if r.status_code == 429:
-        print("Request rate limit exceeded; waiting 1s before trying again...")
-        time.sleep(1)
-        continue
-
-    data = r.json()
-
-    # Create a list of sources from the current page of the query
-    source_list = data["data"].get("sources", [])
-
-    if not source_list:
-        break  # No more sources
-
-    if data["status"] == "success":
-        retries_remaining = max_retries
-    else:
-        print(f"Error: {data["message"]}; waiting 5s before trying again...")  # log as appropriate
-        retry_attempts -= 1
-        time.sleep(5)
-        continue
-    
-    # For every source in the source list
-    for src in source_list:
-        # Retrieve the source id and its creation time
-        src_id = src.get("id")
-        src_time = src.get("created_at")
-        # If the source is older than 10 days or has already been processed, stop looking at sources
-        if ((now - datetime.fromisoformat(src_time).replace(tzinfo=timezone.utc)) > timedelta(days=10)) or id_in_file(src_id, filepath):
-            first_source_found = True # Indicate that we have found the newest source we don't care about
-            break
-        if src_id:
-            # Add the source to the all_sources dict
-            all_sources[src_id] = src
-
-    # Figure out how many total sources there are and how many we have fetched so far
-    total_matches = data["data"]["totalMatches"]
-    params["queryID"] = data["data"]["queryID"] # Pass the queryID to the next request
-
-    # Display how many sources have been fetched so far
-    print(f"Fetched {len(all_sources)} of {total_matches} sources.")
-
-    # If we have found a source that is either too old or has already been processed, stop querying sources
-    # Stop querying sources if we have fetched all available sources
-    if first_source_found or len(all_sources) >= total_matches:
-        break
-
-    # Move to the next page of sources
-    params['pageNumber'] += 1
-
-# For every source in all_sources, check if it matches with any recent GW events
-for src_id in all_sources:
-    print(f"Checking source {src_id}")
-    # Save the source id to the source_ids.txt file to avoid reprocessing it in the future
-    with open(filepath, "a") as f:
-        f.write(f"{src_id}\n")
-    check_source_with_events(all_sources[src_id])
+#########################################
+# Comment this line to run the scheduler
+scheduled_run()
+# ~~~ IMPORTANT SCHEDULING CODE END ~~~
