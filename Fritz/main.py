@@ -13,7 +13,7 @@ from joblib import load
 GCN_CLIENT_ID = os.getenv("GCN_CLIENT_ID")
 GCN_CLIENT_SECRET = os.getenv("GCN_CLIENT_SECRET")
 GCN_GROUP_ID = str(os.getenv("GCN_GROUP_ID", "oraclefritzbot"))
-GCN_ALWAYS_EARLIEST = bool(os.getenv("GCN_ALWAYS_EARLIEST", "False") == "True")
+GCN_ALWAYS_EARLIEST = bool(os.getenv("GCN_ALWAYS_EARLIEST", "true").lower() == "true")
 if not GCN_CLIENT_ID or not GCN_CLIENT_SECRET:
     raise ValueError(
         "GCN_CLIENT_ID and GCN_CLIENT_SECRET must be set as environment variables"
