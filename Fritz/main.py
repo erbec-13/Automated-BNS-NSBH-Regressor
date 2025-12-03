@@ -13,6 +13,7 @@ from joblib import load
 GCN_CLIENT_ID = os.getenv("GCN_CLIENT_ID")
 GCN_CLIENT_SECRET = os.getenv("GCN_CLIENT_SECRET")
 GCN_GROUP_ID = str(os.getenv("GCN_GROUP_ID", "oraclefritzbot"))
+GCN_ALWAYS_EARLIEST = bool(os.getenv("GCN_ALWAYS_EARLIEST", "False") == "True")
 if not GCN_CLIENT_ID or not GCN_CLIENT_SECRET:
     raise ValueError(
         "GCN_CLIENT_ID and GCN_CLIENT_SECRET must be set as environment variables"
@@ -20,9 +21,12 @@ if not GCN_CLIENT_ID or not GCN_CLIENT_SECRET:
 
 config = {
     "group.id": GCN_GROUP_ID,
-    "auto.offset.reset": "earliest",
-    "enable.auto.commit": False,
 }
+if GCN_ALWAYS_EARLIEST:
+    config["auto.offset.reset"] = "earliest"
+    config["enable.auto.commit"] = False
+else:
+    config["enable.auto.commit"] = True
 consumer = Consumer(
     config=config,
     client_id=GCN_CLIENT_ID,
@@ -72,7 +76,9 @@ while True:
                 skymap,
                 PAstro,
                 time,
-                skymap_type,
+                _,
+                _,
+                _,
             ) = params
 
             if alert_type != "RETRACTION" and distmean != "error":
@@ -129,7 +135,6 @@ while True:
                     uncertainty_reshaped,
                     superevent_id,
                     time,
-                    alert_type,
                 )
 
     except Exception as e:

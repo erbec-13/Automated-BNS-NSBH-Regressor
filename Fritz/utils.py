@@ -2,6 +2,7 @@ import numpy as np
 from astropy.table import Table
 from astropy.io import fits
 import requests
+from datetime import timedelta
 from io import BytesIO
 import base64
 import astropy_healpix as ah
@@ -111,8 +112,8 @@ def get_params(event_dict):
     
     far_format = 1. / (far * 3.15576e7)
     t0 = event_dict['voe:VOEvent']['WhereWhen']['ObsDataLocation']['ObservationLocation']['AstroCoords']['Time']['TimeInstant']['ISOTime']
-    dateobs = Time(t0, precision=0).datetime
-    time = dateobs.strftime('%Y-%m-%dT%H:%M:%S')
+    # whereas we want it rounded to the nearest second (e.g. 13:59:59.6 -> 14:00:00, but 13:59:59.4 -> 13:59:59)
+    time = (Time(t0).datetime + timedelta(seconds=0.5)).strftime('%Y-%m-%dT%H:%M:%S')
     
     chirp_mass = get_bin_edges_for_event(superevent_id)
     diststd = skymap.meta.get('DISTSTD', 'error')
@@ -125,7 +126,8 @@ def get_bin_edges_for_event(superevent_id, filename="mchirp_source_PE.json", ser
     # Download file
     try:
         r = client.files(superevent_id, filename)
-    except:
+    except Exception as e:
+        print(f"Error fetching {filename} for {superevent_id}: {e}")
         r = client.files(superevent_id, "mchirp_source.json")
     #for key in r.json():
         #print(key, r.json()[key])
@@ -212,6 +214,8 @@ def post_comment_to_skyportal(time, buffer, superevent_id):
     response = requests.post(url, json=files, headers=headers)
     if response.status_code == 200:
         print(f"Comment posted successfully: {superevent_id}")
+    else:
+        print(f"Failed to post comment for {superevent_id}: {response.status_code} - {response.text}")
 
 
 def plot_all_light_curves_with_uncertainty(time_array, mean_preds, uncertainty, superevent_id, time):
