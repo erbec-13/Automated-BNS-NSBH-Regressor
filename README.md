@@ -3,7 +3,7 @@ All the relevant files can be found in the Fritz folder:
 
 &nbsp;&nbsp;&nbsp;&nbsp;**listener1.py** - The Listener 1 script that currently runs indefinitely and interacts with events.json to save events as outlined below
   
-&nbsp;&nbsp;&nbsp;&nbsp;**listener2.py** - The Listener 2 script that currently runs one time and interacts with events.json to retrieve events as outlined below and then cross references them with sources from Fritz
+&nbsp;&nbsp;&nbsp;&nbsp;**listener2.py** - The Listener 2 script that currently runs indefinitely, executes once per day, and interacts with events.json to retrieve events as outlined below and then cross references them with sources from Fritz
   
 &nbsp;&nbsp;&nbsp;&nbsp;**utils.py** - The script where all the functions authored by Natalya Pletskova and Ethan Erb exist
   
