@@ -17,15 +17,13 @@ All the relevant files can be found in the Fritz folder:
 
 &nbsp;&nbsp;&nbsp;&nbsp;**events.json** - A database where the events from Listener 1 are stored and then accessed by Listener 2
 
-&nbsp;&nbsp;&nbsp;&nbsp;**source_ids.txt** - A database containing every source id that has been processed by Listener 2
-
 &nbsp;&nbsp;&nbsp;&nbsp;**S\*.png** - An image of the plot for event S\*'s prediction
 
 &nbsp;&nbsp;&nbsp;&nbsp;**ZTF\*.png** - An image of the plot for source ZTF\*'s photometry data mapped onto one of its matching events
 
 &nbsp;&nbsp;&nbsp;&nbsp;***skymaps*** - A directory filled with all the skymaps that get retrieved by Listener 2
 
-# Process
+# Spatial-Temporal Matching Process
 An 'event' is found through a gravitational wave trigger and 'sources' are found through measuring light emissions at specific points in the sky; we want to see which light sources belong to which gravitational wave events. This repository goes through a process to create and post plots for new sources in the Fritz EM+GW group. This is the process:
   1. Listener 1 (listener1.py) subscribes to a Kafka consumer and indefinitely queries for new GCN Events in the consumer. The GCN Events as an object correspond to Gravitational Wave (GW) triggers found in the sky. The listener ignores testing events (events starting with 'M').
   2. Listener 1 takes the new Event and receives its parameters. The Event is ran through Natalya Pletskova's Regressor Prediction model (LSTM_model_production.h5) to create an expected prediction for what the Event's Electromagnetic (EM) counterpart would be if it were a kilonova.
@@ -35,18 +33,19 @@ An 'event' is found through a gravitational wave trigger and 'sources' are found
   6. If the source matches with an Event, a plot is created using the prediction data for the Event. The source's photometry is then placed on the Event's plot. This creates a plot where you can compare the expected light emission of the event as if it were a kilonova, with its actual recorded light emission. The closer the photometry points are to the curve of the prediction, the more likely it is that it is a kilonova, however at this point in the process, we will probably only see points near the alert time.
   7. Once the plot is made, it gets posted as a comment on Fritz under the source. When looking on the Fritz page's comments, click the 'Include Bots' checkbox to see the comment. The plot is posted as a png.
 
-# Alternate Process (Not Currently Implemented)
+# Process with Scoring & Slack Messages (Implemented as of 9/14/2026)
 An alternate process similar to the process mentioned above will be used to query candidates instead of sources (candidates are EM sources that haven't been saved to a group yet) that pass the EM+GW group filter. This process will instead work with the GW+EM Sub-Threshold group (still using the EM+GW filter) using a modified version of Listener 2. As mentioned already, Listener 2 will query candidates and then match them with Events from the events database just like in the regular Process. However, after step 5 of the regular Process, the Alternate Process takes a different approach:
-  1. If the candidate matches with an Event, a forced photometry is run on the candidate to get more accurate up to date data.
-  2. The forced photometry data points are compared with the Event prediction to create a reduced chi squared value. If the reduced chi squared value is between 0.1 and 10, we would consider the candidate's photometry to be close enough to indicate the possibility of being a kilonova.
-  3. If the forced photometry is "close enough" to the Event prediction, we save the candidate as a source to GW+EM Sub-Threshold and then send a Slack alert to the members of the group.
+  1. If the candidate matches with an Event, a forced photometry is retrieved to get more accurate up to date data.
+  2. The forced photometry data points are compared with the Event prediction to create a reduced chi squared score. If the reduced chi squared score is less than a significant amount we would consider the candidate's photometry to be close enough to indicate the possibility of being a kilonova.
+  3. If the forced photometry is "close enough" to the Event prediction, we save the candidate as a source to GW+EM Sub-Threshold. We defined "close enough" to be based on an event's FAR and its skymap area_90 values.
   4. At this point we resume steps 6 and 7 of the regular Process to create a plot and post it as a comment on the source's page on Fritz.
+  5. After all matches have been found and scored, a summarizing Slack message goes out to a corresponding mailing list. The Slack message will contain sources grouped under their corresponding events in order, and the scores of each event-source match.
 
   # Listener 1
   The script for this listener has instructions to follow before you run. Namely, setting up credentials in environment variables to be able to access the Kafka consumer. There also exists a debug portion currently commented out that can be used to run the code for a specific event. Currently, Listener 1 runs indefinitely using a while True loop in the script.
 
   # Listener 2
-  The script for this listener also requires you to set credentials for accessing the SkyPortal api. Currently, Listener 2 runs one time, however it has code commented out to be able to run indefinitely, but execute at a specified time of day.
+  The script for this listener also requires you to set credentials for accessing the SkyPortal api, and the token for the Slack bot. Currently, Listener 2 runs indefinitely, but executes at a specified time of day. There are easy instructions in the comments that detail how to change it so it runs and executes only once.
 
   # Events database
   The events.json file saves the events with this file format:\
