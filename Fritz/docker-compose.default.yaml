@@ -5,7 +5,8 @@ services:
     container_name: oracle-fritz-bot
     environment:
       - GCN_CLIENT_ID=<your client id>
-      - GCN_CLIENT_SECRET=<your client
+      - GCN_CLIENT_SECRET=<your client secret>
       - GCN_GROUP_ID=oraclefritzbot
-      - SKYPORTAL_HOST="https:/fritz.science"
+      - GCN_ALWAYS_EARLIEST=True # change to False in production
+      - SKYPORTAL_HOST="https://fritz.science"
       - SKYPORTAL_TOKEN=<your token>
