@@ -62,10 +62,4 @@ An alternate process similar to the process mentioned above will be used to quer
   &nbsp;&nbsp;&nbsp;&nbsp;},\
   &nbsp;&nbsp;&nbsp;&nbsp;...\
   }
-
-  # Source ID database
-  The source_ids.txt file saves the source ids with this file format (most recent source first):\
-  source1id\
-  source2id\
-  source3id\
-  ...
+  
