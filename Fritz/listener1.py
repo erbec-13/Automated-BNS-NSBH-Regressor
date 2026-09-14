@@ -115,76 +115,85 @@ model = load_model(
 while True:
     try:
         # Retrieve the next message packet from the Kafka consumer
-        for message in consumer.consume():
-            # Get the parameters from the GCN notice
-            value = message.value()
-            parsed = parse_gcn(value) # Replace 'value' with 'content' for the debugging code block above
-            if (graceid := next((p['@value'] for p in parsed['voe:VOEvent']['What']['Param'] if p.get('@name') == 'GraceID'), None)) and graceid.startswith("M"):
-                continue
-            params = get_params(parsed)
-            superevent_id, event_page, alert_type, group, prob_bbh, prob_bns, prob_nsbh, far_format, distmean, area_90, longitude, latitude, has_ns, has_remnant, has_mass_gap, significant, prob_ter, skymap, PAstro, time, diststd, chirp_mass, skymap_url, far = params
+        # for message in consumer.consume():
+        # let's have a timeout of 1 second to check for KeyboardInterrupt
+        message = consumer.poll(timeout=1.0)
+        if message is None:
+            continue
+        # Get the parameters from the GCN notice
+        value = message.value()
+        parsed = parse_gcn(value) # Replace 'value' with 'content' for the debugging code block above
+        if (graceid := next((p['@value'] for p in parsed['voe:VOEvent']['What']['Param'] if p.get('@name') == 'GraceID'), None)) and graceid.startswith("M"):
+            continue
+        params = get_params(parsed)
+        superevent_id, event_page, alert_type, group, prob_bbh, prob_bns, prob_nsbh, far_format, distmean, area_90, longitude, latitude, has_ns, has_remnant, has_mass_gap, significant, prob_ter, skymap, PAstro, time, diststd, chirp_mass, skymap_url, far = params
 
-            # Display the event id and alert type
-            print(superevent_id + " " + alert_type)
+        # Display the event id and alert type
+        print(superevent_id + " " + alert_type)
 
-            # Only process non-retraction alerts with valid distance
-            if alert_type != "RETRACTION" and distmean != "error":
-                print(f"Processing {superevent_id} ({alert_type})")
-                
-                X = np.vstack((area_90, has_ns, has_remnant, has_mass_gap, PAstro, distmean, diststd)).T
+        # Only process non-retraction alerts with valid distance
+        if alert_type != "RETRACTION" and distmean != "error":
+            print(f"Processing {superevent_id} ({alert_type})")
+            
+            X = np.vstack((area_90, has_ns, has_remnant, has_mass_gap, PAstro, distmean, diststd)).T
 
-                # Time array
-                t_min = 0.1
-                t_max = 6.0
-                dt = 0.2
-                time_single = np.linspace(t_min, t_max, num_time_points)
-                filter_order = 3
+            # Time array
+            t_min = 0.1
+            t_max = 6.0
+            dt = 0.2
+            time_single = np.linspace(t_min, t_max, num_time_points)
+            filter_order = 3
 
-                # Standardize the target data
-                X_new = feature_scaler.transform(X)
-                chirp_mass = [chirp_mass]
-                X_new = np.concatenate([X_new, chirp_mass], axis=1)
+            # Standardize the target data
+            X_new = feature_scaler.transform(X)
+            chirp_mass = [chirp_mass]
+            X_new = np.concatenate([X_new, chirp_mass], axis=1)
 
-                # Reshape X data for LSTM input based on the model's input shape
-                X_new_reshaped = X_new.reshape((X_new.shape[0], 1, X_new.shape[1]))
+            # Reshape X data for LSTM input based on the model's input shape
+            X_new_reshaped = X_new.reshape((X_new.shape[0], 1, X_new.shape[1]))
 
-                n_mc_samples = 1000
-                mean_preds_new, uncertainty_new = predict_with_uncertainty(model, X_new_reshaped, n_iter=n_mc_samples)
+            n_mc_samples = 1000
+            mean_preds_new, uncertainty_new = predict_with_uncertainty(model, X_new_reshaped, n_iter=n_mc_samples)
 
-                # Reshape the mean predictions to match the shape used during scaling (num_samples, num_time_points * num_filters)
-                mean_preds_flat = mean_preds_new.reshape(mean_preds_new.shape[0], num_time_points * 3)
+            # Reshape the mean predictions to match the shape used during scaling (num_samples, num_time_points * num_filters)
+            mean_preds_flat = mean_preds_new.reshape(mean_preds_new.shape[0], num_time_points * 3)
 
-                # Invert the standardization for the mean predictions
-                mean_preds_inverted = target_scaler.inverse_transform(mean_preds_flat).reshape(mean_preds_new.shape[0], num_time_points, 3)
+            # Invert the standardization for the mean predictions
+            mean_preds_inverted = target_scaler.inverse_transform(mean_preds_flat).reshape(mean_preds_new.shape[0], num_time_points, 3)
 
-                # Reshape uncertainty to match mean_preds_inverted shape
-                uncertainty_reshaped = uncertainty_new.reshape(uncertainty_new.shape[0], num_time_points, 3)
+            # Reshape uncertainty to match mean_preds_inverted shape
+            uncertainty_reshaped = uncertainty_new.reshape(uncertainty_new.shape[0], num_time_points, 3)
 
-                # Store the event data needed to plot the prediction
-                event_data = {"time_single": time_single.tolist(), "mean_preds_inverted": mean_preds_inverted.tolist(), "uncertainty_reshaped": uncertainty_reshaped.tolist(), "time": time, "alert_type": alert_type, "skymap_url": skymap_url, "far": far, "area_90": area_90}
-                
-                # Identify the events.json file to store the event data to
-                file_path = "events.json"
+            # Store the event data needed to plot the prediction
+            event_data = {"time_single": time_single.tolist(), "mean_preds_inverted": mean_preds_inverted.tolist(), "uncertainty_reshaped": uncertainty_reshaped.tolist(), "time": time, "alert_type": alert_type, "skymap_url": skymap_url, "far": far, "area_90": area_90}
+            
+            # Identify the events.json file to store the event data to
+            file_path = "events.json"
 
-                # Load existing events from events.json if it exists, otherwise create a new dictionary
-                if os.path.exists(file_path):
-                    with open(file_path, "r") as f:
-                        events = json.load(f)
-                else:
-                    events = {}
-                
-                # Add or update the event data for the current superevent_id
-                events[superevent_id] = event_data
+            # Load existing events from events.json if it exists, otherwise create a new dictionary
+            if os.path.exists(file_path):
+                with open(file_path, "r") as f:
+                    events = json.load(f)
+            else:
+                events = {}
+            
+            # Add or update the event data for the current superevent_id
+            events[superevent_id] = event_data
 
-                # Save the updated events dictionary back to events.json (creating the file if it doesn't exist)
-                with open(file_path, "w") as f:
-                    json.dump(events, f, indent=2)
-                
-                #plot_all_light_curves_with_uncertainty(time_single, mean_preds_inverted, uncertainty_reshaped, superevent_id, time)
+            # Save the updated events dictionary back to events.json (creating the file if it doesn't exist)
+            with open(file_path, "w") as f:
+                json.dump(events, f, indent=2)
+            
+            #plot_all_light_curves_with_uncertainty(time_single, mean_preds_inverted, uncertainty_reshaped, superevent_id, time)
 
     # Handle exceptions gracefully and continue listening for new events
+    # listen to control-C to exit
+    except KeyboardInterrupt:
+        print("Exiting...")
+        break
     except Exception as e:
         print(e)
+        traceback.print_exc()
         continue
 
 # Close the consumer when done iterating

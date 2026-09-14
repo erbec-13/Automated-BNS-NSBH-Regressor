@@ -15,5 +15,6 @@ pre-commit
 keras==3.4.1
 tensorflow==2.16.1
 ligo-gracedb
+ligo.gracedb.rest
 apscheduler
 pytz
