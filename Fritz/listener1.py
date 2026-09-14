@@ -45,13 +45,23 @@ force_ipv4()
 GCN_CLIENT_ID = os.getenv("GCN_CLIENT_ID")
 GCN_CLIENT_SECRET = os.getenv("GCN_CLIENT_SECRET")
 GCN_GROUP_ID = str(os.getenv("GCN_GROUP_ID", "oraclefritzbot"))
+GCN_ALWAYS_EARLIEST = bool(os.getenv("GCN_ALWAYS_EARLIEST", "true").lower() == "true")
 if not GCN_CLIENT_ID or not GCN_CLIENT_SECRET:
     raise ValueError(
         "GCN_CLIENT_ID and GCN_CLIENT_SECRET must be set as environment variables"
     )
 
+config = {
+    "group.id": GCN_GROUP_ID,
+    'broker.address.family': 'v4'
+}
+if GCN_ALWAYS_EARLIEST:
+    config["auto.offset.reset"] = "earliest"
+    config["enable.auto.commit"] = False
+else:
+    config["enable.auto.commit"] = True
+
 # Set up the Kafka consumer where we retrieve GCN notices
-config = {'group.id': 'bnsAndnsbhLCforslack', 'auto.offset.reset': 'earliest', 'enable.auto.commit': False, 'broker.address.family': 'v4'}
 consumer = Consumer(
     config=config,
     client_id=GCN_CLIENT_ID,
