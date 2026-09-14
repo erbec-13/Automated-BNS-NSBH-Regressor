@@ -445,7 +445,7 @@ def check_if_source_photometry_matches_with_event_prediction(source_id, event_id
     return
 
 def send_slack(text_load, user_id="U0AKLPPK8RM"):
-    token = "REDACTED_SLACK_TOKEN"
+    token = os.environ["SLACK_API_TOKEN"]
     #user_id = "U044QV5LVFE"
     url = "https://slack.com/api/chat.postMessage"
 
