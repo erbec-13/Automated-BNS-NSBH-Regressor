@@ -117,7 +117,7 @@ def get_params(event_dict):
     chirp_mass = get_bin_edges_for_event(superevent_id)
     diststd = skymap.meta.get('DISTSTD', 'error')
     
-    return superevent_id, event_page, alert_type, group, prob_bbh, prob_bns, prob_nsbh, far_format, distmean, area_90, longitude, latitude, has_ns, has_remnant, has_mass_gap, significant, prob_ter, skymap, PAstro, time, diststd, chirp_mass, skymap_url
+    return superevent_id, event_page, alert_type, group, prob_bbh, prob_bns, prob_nsbh, far_format, distmean, area_90, longitude, latitude, has_ns, has_remnant, has_mass_gap, significant, prob_ter, skymap, PAstro, time, diststd, chirp_mass, skymap_url, far
 
 # Extract ChirpMass if present
 def get_bin_edges_for_event(superevent_id, filename="mchirp_source_PE.json", service_url='https://gracedb.ligo.org/api/'):

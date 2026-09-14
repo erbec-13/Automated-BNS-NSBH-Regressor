@@ -51,7 +51,7 @@ if not GCN_CLIENT_ID or not GCN_CLIENT_SECRET:
     )
 
 # Set up the Kafka consumer where we retrieve GCN notices
-config = {'group.id': 'bnsAndnsbhLCforslack', 'auto.offset.reset': 'earliest', 'enable.auto.commit': False}
+config = {'group.id': 'bnsAndnsbhLCforslack', 'auto.offset.reset': 'earliest', 'enable.auto.commit': False, 'broker.address.family': 'v4'}
 consumer = Consumer(
     config=config,
     client_id=GCN_CLIENT_ID,
@@ -60,7 +60,7 @@ consumer = Consumer(
 )
 consumer.subscribe(
     [
-        "gcn.classic.voevent.LVC_PRELIMINARY",
+        #"gcn.classic.voevent.LVC_PRELIMINARY",
         "gcn.classic.voevent.LVC_INITIAL",
         "gcn.classic.voevent.LVC_UPDATE",
     ]
@@ -69,26 +69,26 @@ consumer.subscribe(
 # ~~~ DEBUGGING CODE ~~~
 # Uncomment this section to download a specific event from GraceDB for testing purposes
 # In the while loop below, pass 'content' to parse_gcn() instead of 'value'
-
+#
 #client = GraceDb()
 #
-#superevent_id = "S251031dw"
+#superevent_id = "S250628am"
 #
-## Choose the VOEvent file you want
-#filename = "S251031dw-3-Initial.xml"
+# Choose the VOEvent file you want
+#filename = superevent_id + "-4-Update.xml"
 #
-## Download the file content
+# Download the file content
 #response = client.files(superevent_id, filename)
-
-## Save it locally if needed
+#
+# Save it locally if needed
 #with open(filename, "wb") as f:
 #    f.write(response.read())
-
+#
 #print(f"Downloaded {filename}")
-
+#
 #voevent = client.files(superevent_id, filename)
 #content = voevent.read()
-
+#
 # ~~~ END DEBUGGING CODE ~~~
 
 
@@ -118,11 +118,11 @@ while True:
         for message in consumer.consume():
             # Get the parameters from the GCN notice
             value = message.value()
-            parsed = parse_gcn(value)
+            parsed = parse_gcn(value) # Replace 'value' with 'content' for the debugging code block above
             if (graceid := next((p['@value'] for p in parsed['voe:VOEvent']['What']['Param'] if p.get('@name') == 'GraceID'), None)) and graceid.startswith("M"):
                 continue
             params = get_params(parsed)
-            superevent_id, event_page, alert_type, group, prob_bbh, prob_bns, prob_nsbh, far_format, distmean, area_90, longitude, latitude, has_ns, has_remnant, has_mass_gap, significant, prob_ter, skymap, PAstro, time, diststd, chirp_mass, skymap_url = params
+            superevent_id, event_page, alert_type, group, prob_bbh, prob_bns, prob_nsbh, far_format, distmean, area_90, longitude, latitude, has_ns, has_remnant, has_mass_gap, significant, prob_ter, skymap, PAstro, time, diststd, chirp_mass, skymap_url, far = params
 
             # Display the event id and alert type
             print(superevent_id + " " + alert_type)
@@ -132,8 +132,6 @@ while True:
                 print(f"Processing {superevent_id} ({alert_type})")
                 
                 X = np.vstack((area_90, has_ns, has_remnant, has_mass_gap, PAstro, distmean, diststd)).T
-
-                print(X)
 
                 # Time array
                 t_min = 0.1
@@ -163,7 +161,7 @@ while True:
                 uncertainty_reshaped = uncertainty_new.reshape(uncertainty_new.shape[0], num_time_points, 3)
 
                 # Store the event data needed to plot the prediction
-                event_data = {"time_single": time_single.tolist(), "mean_preds_inverted": mean_preds_inverted.tolist(), "uncertainty_reshaped": uncertainty_reshaped.tolist(), "time": time, "alert_type": alert_type, "skymap_url": skymap_url}
+                event_data = {"time_single": time_single.tolist(), "mean_preds_inverted": mean_preds_inverted.tolist(), "uncertainty_reshaped": uncertainty_reshaped.tolist(), "time": time, "alert_type": alert_type, "skymap_url": skymap_url, "far": far, "area_90": area_90}
                 
                 # Identify the events.json file to store the event data to
                 file_path = "events.json"
@@ -182,7 +180,7 @@ while True:
                 with open(file_path, "w") as f:
                     json.dump(events, f, indent=2)
                 
-                plot_all_light_curves_with_uncertainty(time_single, mean_preds_inverted, uncertainty_reshaped, superevent_id, time)
+                #plot_all_light_curves_with_uncertainty(time_single, mean_preds_inverted, uncertainty_reshaped, superevent_id, time)
 
     # Handle exceptions gracefully and continue listening for new events
     except Exception as e:
